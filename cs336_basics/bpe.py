@@ -7,9 +7,23 @@ def train_bpe(input_path:str,
               special_tokens:list[str]
 ) -> tuple[dict[int, bytes],list[tuple[bytes, bytes]]]:
 
-    
+    """Train a byte-level BPE tokenizer from a UTF-8 text file.
 
-    #V init
+    Args:
+        input_path: Path to the training text
+        vocab_size: Maximum final vocabulary size
+        special_tokens: Tokens added to the vocabulary and excluded from merge statistics
+
+    Returns:
+        The vocabulary and the ordered list of learned merges
+    """
+
+    # seq_by_id: stable sequence ID -> current BPE token sequence
+    # freq_by_id: stable sequence ID -> fixed corpus multiplicity
+    # adj: adjacent token pair -> weighted global occurrence count
+    # pair_to_seq_ids: adjacent token pair -> IDs of sequences currently containing it
+
+    # Initialize the vocabulary with all 256 byte tokens and the provided special tokens
     vocab = {k: bytes([k]) for k in range(256)}
     for i in range(len(special_tokens)):
         vocab[len(vocab)] = special_tokens[i].encode("utf-8")
@@ -17,14 +31,14 @@ def train_bpe(input_path:str,
     if vocab_size < len(vocab):
         raise ValueError("vocab_size < that required initial vocab")
 
-    #File opening
+    #Read the UTF-8 training corpus
     with open(input_path, "r",encoding="utf-8") as f:
         text = f.read()
 
-    #sort soecial_tokens in descending order
+    #sort special_tokens in descending order
     sorted_s_t = sorted(special_tokens,key=len,reverse=True)
 
-    #Split by special tokens
+    #Split corpus at special token boundries
     escaped_s_t = []
     for i in range(len(sorted_s_t)):
         escaped_s_t.append(re.escape(sorted_s_t[i]))
@@ -33,7 +47,7 @@ def train_bpe(input_path:str,
         parts = re.split(pattern,text) #text between special tokens
     else:
         parts = [text]
-    #Count str words
+    ##Count pre-token occurrences across all corpus segments
     pretoken_counts = {}
     for word in parts:
         itterator = re.finditer(PAT,word)
@@ -43,49 +57,86 @@ def train_bpe(input_path:str,
             else:
                 pretoken_counts[match.group()] = 1
 
+    
+    #Assign each pre-token sequence a stable ID
+    #seq_by_id maps sequence ID -> current BPE representation
+    seq_by_id: dict[int,tuple[bytes,...]] = {}; i = 0
     #Byte representation of pretoken_counts
     d_b = {}
     for key,value in pretoken_counts.items():
         s_b = key.encode("utf-8")
         t = tuple([bytes([x]) for x in s_b])
         d_b[t] = value
+        seq_by_id[i] = t; i+=1
+    #freq_by_id maps sequence ID -> fixed corpus multiplicity
+    freq_by_id: dict[int,int] = {i : d_b[seq_by_id[i]] for i in range(len(seq_by_id))}
+    merges: list[tuple[bytes,bytes]] = []
 
-    token_seq_counts = {key: value for key,value in d_b.items()} #global dict
-    merges = [] #list[tuple[bytes,bytes]]
+    #pair_to_seq_ids maps pair -> sequence IDs in which the pair currently occurs
+    pair_to_seq_ids: dict[tuple[bytes,bytes], set[int]] = {}
+    #adj maps pair -> weighted global occurrence count
+    adj: dict[tuple[bytes, bytes], int] = {} 
+    for i,x in seq_by_id.items():
+        for left_token, right_token in zip(x[:-1],x[1:]):
+            if (left_token,right_token) in adj:
+                adj[(left_token,right_token)] += freq_by_id[i]
+            else:
+                adj[(left_token,right_token)] = freq_by_id[i]
+            
+            if (left_token,right_token) not in pair_to_seq_ids:
+                pair_to_seq_ids[(left_token,right_token)] = set()
+            pair_to_seq_ids[(left_token,right_token)].add(i)
 
-    #Iteration till |V| < V_size
+    #Iteration till |V| < vocab__size
     while len(vocab) < vocab_size:
-        #count pair frequency
-        adj = {}
-        for x,freq in token_seq_counts.items():
-            for start, end in zip(x[:-1],x[1:]):
-                if (start,end) in adj:
-                    adj[(start,end)] += freq
-                else:
-                    adj[(start,end)] = freq
-
-        #Merge
-        if not adj: #adj void case
+        #Select the most frequent pair, break frequency ties lexicographically
+        if not adj: #No mergeable pairs remain
             break
         win_pair = max(adj,key=
                     lambda x: (adj[x],x))
         merged_token = win_pair[0]+win_pair[1]
         vocab[len(vocab)] = merged_token #add merged token to vocab
         merges.append(win_pair)
+        #Restrict updates to only the seq that currently contain the winning pair
+        regions = pair_to_seq_ids[win_pair].copy()
 
-        updated_seq_counts = {} #dict after merge
-
-        for key,value in token_seq_counts.items():
-            i = 0
+        #Construct the updated token sequence after applying the selected merge
+        for seq_id in regions:
+            token_seq = seq_by_id[seq_id]; i = 0
             updated_sequence = []
-            while i < len(key):
-                if i+1 <len(key) and (key[i],key[i+1]) == win_pair:
+            while i < len(token_seq):
+                if i+1 <len(token_seq) and (token_seq[i],token_seq[i+1]) == win_pair:
                     updated_sequence.append(merged_token)
                     i+=2
                 else:
-                    updated_sequence.append(key[i])
+                    updated_sequence.append(token_seq[i])
                     i+=1
-            updated_seq_counts[tuple(updated_sequence)] = value
-        token_seq_counts = updated_seq_counts #work with a new dict in next iteration
+            #Remove this sequence's old contributions from the pair-freq cache and pair idx
+            for left_token,right_token in zip(seq_by_id[seq_id][:-1],seq_by_id[seq_id][1:]):
+                pair = (left_token,right_token)
+                adj[pair] -= freq_by_id[seq_id]
 
+                if adj[pair] == 0:
+                    del adj[pair]
+
+                if pair in pair_to_seq_ids:
+                    pair_to_seq_ids[pair].discard(seq_id)
+
+                    if not pair_to_seq_ids[pair]:
+                        del pair_to_seq_ids[pair]
+                
+            #Replace the sequence's current BPE representation
+            seq_by_id[seq_id] = tuple(updated_sequence)
+            #Add this sequence's new contributions to the pair-frequency cache and pair index
+            for left_token,right_token in zip(seq_by_id[seq_id][:-1],seq_by_id[seq_id][1:]):
+                pair = (left_token,right_token)
+                if pair in adj:    
+                    adj[pair] += freq_by_id[seq_id]
+                else:
+                    adj[pair] = freq_by_id[seq_id]
+
+                if pair not in pair_to_seq_ids:
+                    pair_to_seq_ids[pair] = set()
+                pair_to_seq_ids[pair].add(seq_id)
+    #Return the learned vocabulary and merges in creation order
     return vocab,merges
