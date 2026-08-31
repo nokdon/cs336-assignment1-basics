@@ -1,0 +1,8 @@
+hello cat hello cat 牛
+the cat sat on the mat
+<|endoftext|>
+hello dog hello dog
+the dog sat on the mat 牛
+<|endoftext|>
+hello fish hello cat
+the fish swam past the cat
