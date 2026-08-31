@@ -11,7 +11,8 @@ def main():
     vocab,merges = train_bpe(
         input_path=INPUT_PATH,
         vocab_size=32_000,
-        special_tokens=special_tokens
+        special_tokens=special_tokens,
+        num_processes=4
     )
     elapsed = perf_counter() - start_time
 
