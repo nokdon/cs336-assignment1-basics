@@ -1,10 +1,127 @@
+import os
+from typing import BinaryIO
 import regex as re
+from concurrent.futures import ProcessPoolExecutor
 #Parameters
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
+def count_pretokens(text: str,
+                    special_tokens: list[str]
+)->dict[str,int]:
+    sorted_s_t = sorted(special_tokens,key=len,reverse=True)
+    
+    #Split corpus at special token boundries
+    escaped_s_t = []
+    for i in range(len(sorted_s_t)):
+        escaped_s_t.append(re.escape(sorted_s_t[i]))
+    if len(escaped_s_t) > 0:
+        pattern = "|".join(escaped_s_t)
+        parts = re.split(pattern,text) #text between special tokens
+    else:
+        parts = [text]
+    ##Count pre-token occurrences across all corpus segments
+    pretoken_counts = {}
+    for word in parts:
+        itterator = re.finditer(PAT,word)
+        for match in itterator:
+            if match.group() in pretoken_counts:
+                pretoken_counts[match.group()] += 1
+            else:
+                pretoken_counts[match.group()] = 1
+
+    return pretoken_counts
+
+def worker(input_path:str,
+           start: int,
+           end: int,
+           special_tokens: list[str]
+) -> dict[str,int]:
+    #Read the UTF-8 training corpus
+
+    with open(input_path, "rb") as f:
+        f.seek(start)
+        text = f.read(end-start).decode("utf-8",errors="ignore")
+
+    pretoken_counts = count_pretokens(text,special_tokens)
+    
+    return pretoken_counts
+
+def find_chunk_boundaries(
+    file: BinaryIO,
+    desired_num_chunks: int,
+    split_special_token: bytes,
+) -> list[int]:
+    """
+    Chunk the file into parts that can be counted independently.
+    May return fewer chunks if the boundaries end up overlapping.
+    """
+    assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
+
+    # Get total file size in bytes
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+
+    chunk_size = file_size // desired_num_chunks
+
+    # Initial guesses for chunk boundary locations, uniformly spaced
+    # Chunks start on previous index, don't include last index
+    chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
+    chunk_boundaries[-1] = file_size
+
+    mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
+
+    for bi in range(1, len(chunk_boundaries) - 1):
+        initial_position = chunk_boundaries[bi]
+        file.seek(initial_position)  # Start at boundary guess
+        while True:
+            mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
+
+            # If EOF, this boundary should be at the end of the file
+            if mini_chunk == b"":
+                chunk_boundaries[bi] = file_size
+                break
+
+            # Find the special token in the mini chunk
+            found_at = mini_chunk.find(split_special_token)
+            if found_at != -1:
+                chunk_boundaries[bi] = initial_position + found_at
+                break
+            initial_position += mini_chunk_size
+
+    # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
+    return sorted(set(chunk_boundaries))
+
+def count_file_pretokens(input_path: str,
+                         num_processes: int,
+                         special_tokens: list[str]
+)->dict[str,int]:
+    with open(input_path, "rb") as f:
+            global_chunk_pretoken_count = {}
+            boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+    
+    with ProcessPoolExecutor(max_workers=num_processes) as executor:
+        futures = []    
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            
+            future = executor.submit(worker,input_path,start,end,special_tokens)
+            futures.append(future)
+
+
+        for future in futures:
+            chunk_pretoken_count = future.result()
+        
+            for key,value in chunk_pretoken_count.items():
+                if key in global_chunk_pretoken_count:
+                    global_chunk_pretoken_count[key] += value
+                else:
+                    global_chunk_pretoken_count[key] = value
+    return global_chunk_pretoken_count
+
 def train_bpe(input_path:str,
               vocab_size:int,
-              special_tokens:list[str]
+              special_tokens:list[str],
+              num_processes: int =  1
 ) -> tuple[dict[int, bytes],list[tuple[bytes, bytes]]]:
 
     """Train a byte-level BPE tokenizer from a UTF-8 text file.
@@ -31,33 +148,11 @@ def train_bpe(input_path:str,
     if vocab_size < len(vocab):
         raise ValueError("vocab_size < that required initial vocab")
 
-    #Read the UTF-8 training corpus
-    with open(input_path, "r",encoding="utf-8") as f:
-        text = f.read()
-
-    #sort special_tokens in descending order
-    sorted_s_t = sorted(special_tokens,key=len,reverse=True)
-
-    #Split corpus at special token boundries
-    escaped_s_t = []
-    for i in range(len(sorted_s_t)):
-        escaped_s_t.append(re.escape(sorted_s_t[i]))
-    if len(escaped_s_t) > 0:
-        pattern = "|".join(escaped_s_t)
-        parts = re.split(pattern,text) #text between special tokens
-    else:
-        parts = [text]
-    ##Count pre-token occurrences across all corpus segments
-    pretoken_counts = {}
-    for word in parts:
-        itterator = re.finditer(PAT,word)
-        for match in itterator:
-            if match.group() in pretoken_counts:
-                pretoken_counts[match.group()] += 1
-            else:
-                pretoken_counts[match.group()] = 1
-
     
+    pretoken_counts = count_file_pretokens(
+        input_path,num_processes,special_tokens
+    )
+
     #Assign each pre-token sequence a stable ID
     #seq_by_id maps sequence ID -> current BPE representation
     seq_by_id: dict[int,tuple[bytes,...]] = {}; i = 0
