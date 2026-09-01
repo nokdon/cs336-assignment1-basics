@@ -17,3 +17,11 @@ Problem (train_bpe_tinystories):
     Longest token = b' accomplishment' | len = 15 bytes
     Training time: 437.27 seconds
     |V| = 10000
+
+Problem (train_bpe_expts_owt):
+    Longest token = b'\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82' | len = 64
+    Training time: 18382.17 seconds
+    |V| = 32000
+    # of merges = 31743
+    a)The longest token makes sense, because we read noisy web text, where exists such tokens. This tokens are errors of repeated encoding, so called mojibake artifacts
+    b)The the majority of first longest tokens in openwebtxt are mojibake artifacts. While tinystories are clean text where longest tokens are actual readable english words
