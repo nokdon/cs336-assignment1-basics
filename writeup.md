@@ -25,3 +25,14 @@ Problem (train_bpe_expts_owt):
     # of merges = 31743
     a)The longest token makes sense, because we read noisy web text, where exists such tokens. This tokens are errors of repeated encoding, so called mojibake artifacts
     b)The the majority of first longest tokens in openwebtxt are mojibake artifacts. While tinystories are clean text where longest tokens are actual readable english words
+
+Problem (tokenizer_experiments):
+    a)Tiny = 4.04 bytes/token, OWT = 4.51 bytes/token
+    b) 3.41 bytes/token. TinyStories tokenizer is trained on more simple homogeneous corpus and have 10k voc vs 32k thats why different OWT sequences splits on more short subwords
+    с)  Processed bytes: 10116434
+        Elapsed time (seconds): 29.467023493998568
+        Throughput (bytes/second): 343313.7385613574
+        Estimated total time (seconds): 2403049.7685794043
+        Estimated total time (hours): 667.5138246053901
+        Estimated total time (days): 27.813076025224586
+        If we linearly estimate thus Esitmated time = Estimated_num_bytes / rate we obtain 667 hours
