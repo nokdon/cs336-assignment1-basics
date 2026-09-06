@@ -36,3 +36,4 @@ Problem (tokenizer_experiments):
         Estimated total time (hours): 667.5138246053901
         Estimated total time (days): 27.813076025224586
         If we linearly estimate thus Esitmated time = Estimated_num_bytes / rate we obtain 667 hours
+    d)Uint-16 occupies 2 bytes, while int32 ocuppy around 4 bytes and int64 occupies 8 bytes. Also Uint-16 can represent 2^16=65536 possible tokens while |V| of Tiny = 10k and OWT = 32k and both vocabluraries fit this range
