@@ -73,3 +73,30 @@ class RMSNorm(torch.nn.Module):
         g = self.g.to(torch.float32)
         result = g * RHS
         return result.to(x_type)
+
+class PWFF(torch.nn.Module):
+    def __init__(self,d_model:int,
+                 d_ff:int,
+                 device:torch.device | None = None,
+                 dtype:torch.dtype| None = None
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.d_ff = d_ff
+        self.device = device
+        self.dtype = dtype
+
+        self.w2 = Linear(d_ff,d_model,device,dtype)
+        self.w1 = Linear(d_model,d_ff,device,dtype)
+        self.w3 = Linear(d_model,d_ff,device,dtype)
+
+    def forward(self,x:torch.Tensor
+    )->torch.Tensor:
+        assert x.shape[-1] == self.d_model
+
+        first = self.w1.forward(x)
+        second = first*torch.sigmoid(first)
+        third = second * self.w3.forward(x)
+        forth = self.w2.forward(third)
+
+        return forth
