@@ -138,3 +138,11 @@ class RoPE(torch.nn.Module):
         output = torch.empty_like(x)
         output[...,::2] = first; output[...,1::2] = second
         return output
+
+def softmax(x: torch.Tensor,
+            dim_i: int
+)->torch.Tensor:
+    c = torch.amax(x,dim=dim_i,keepdim=True)
+    exp_x = torch.exp(x-c)
+    denominator = torch.sum(exp_x,dim=dim_i,keepdim=True)
+    return exp_x/denominator
