@@ -100,3 +100,41 @@ class PWFF(torch.nn.Module):
         forth = self.w2.forward(third)
 
         return forth
+
+class RoPE(torch.nn.Module):
+    def __init__(self,
+                 theta: float,
+                 d_k: int,
+                 max_seq_len: int,
+                 device : torch.device | None= None
+    ):
+        super().__init__()
+        self.theta = theta
+        self.d_k = d_k
+        self.max_seq_len = max_seq_len
+        self.device = device
+                                                #P = max_seq_len
+        position = torch.arange(0,max_seq_len,device=device)[:,None] #(P,1)
+        num_of_pairs = torch.arange(0,d_k//2,device=device) #(K,)
+        denominator = theta**(2*num_of_pairs/d_k)
+        angle = position/denominator #(P,K)
+        cos = torch.cos(angle)
+        sin = torch.sin(angle)
+
+        assert sin.shape == (max_seq_len,d_k//2)
+        assert cos.shape == (max_seq_len,d_k//2)
+
+        self.register_buffer("cos",cos,persistent=False)
+        self.register_buffer("sin",sin,persistent=False)
+
+    def forward(self, x: torch.Tensor,
+                token_positions: torch.Tensor
+    )->torch.Tensor:
+        a = x[...,::2]; b = x[...,1::2]
+        cos_pos = self.cos[token_positions]
+        sin_pos = self.sin[token_positions]
+        first = cos_pos*a - sin_pos*b
+        second = sin_pos*a + cos_pos*b
+        output = torch.empty_like(x)
+        output[...,::2] = first; output[...,1::2] = second
+        return output
