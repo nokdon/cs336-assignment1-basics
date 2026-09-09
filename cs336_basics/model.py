@@ -274,3 +274,50 @@ class transformer_block(torch.nn.Module):
         y_one_normed = self.norm_obj_2(y_one)
         r_two = self.pwff_onj(y_one_normed)
         return y_one + r_two
+
+class TransformerLM(torch.nn.Module):
+    def __init__(self, vocab_size: int,
+                 context_length: int,
+                 num_layers: int,
+                 d_model: int,
+                 num_heads:int ,
+                 d_ff:int,
+                 theta:float,
+                 device: torch.device | None = None,
+                 dtype: torch.dtype | None = None,
+                 eps: float = 1e-5):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.context_length = context_length
+        self.num_layers = num_layers
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_ff = d_ff
+        self.theta = theta
+        self.device = device
+        self.dtype = dtype
+        self.eps = eps
+
+        self.embedding_obj = Embedding(vocab_size,d_model,device,dtype)
+        s = [transformer_block(d_model,num_heads,d_ff,
+                                theta,context_length,device,dtype,eps) for _ in range(num_layers)]
+        self.transformer_block_obj = torch.nn.ModuleList(s)
+        self.final_norm_obj = RMSNorm(d_model,eps,device,dtype)
+        self.linear_obj = Linear(d_model,vocab_size,device,dtype)
+
+    def forward(self,x:torch.Tensor,
+    )->torch.Tensor:
+        #Input -> Token Embedding
+        e = self.embedding_obj(x)
+
+        #Embedding -> Transformer block
+        for block in self.transformer_block_obj:
+            e = block(e)
+
+        #Transformer block -> Norm
+        e_norm = self.final_norm_obj(e)
+
+        #Norm -> linear
+        logits = self.linear_obj(e_norm)
+
+        return logits

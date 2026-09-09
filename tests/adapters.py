@@ -14,6 +14,7 @@ from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.model import Linear, Embedding, RMSNorm, PWFF
 from cs336_basics.model import RoPE, softmax, scaled_dot_product_attention
 from cs336_basics.model import multihead_self_attention, transformer_block
+from cs336_basics.model import TransformerLM
 
 def run_linear(
     d_in: int,
@@ -401,7 +402,33 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    transformer_lm_obj = TransformerLM(vocab_size,context_length,num_layers,
+                                       d_model,num_heads,d_ff,rope_theta
+    )
+    state = {
+      "embedding_obj.weight": weights["token_embeddings.weight"],
+      "final_norm_obj.g": weights["ln_final.weight"],
+      "linear_obj.weight": weights["lm_head.weight"],
+    }
+
+    for i in range(num_layers):
+        source = f"layers.{i}"
+        target = f"transformer_block_obj.{i}"
+
+        state.update({
+            f"{target}.attention_obj.wq.weight": weights[f"{source}.attn.q_proj.weight"],
+            f"{target}.attention_obj.wk.weight": weights[f"{source}.attn.k_proj.weight"],
+            f"{target}.attention_obj.wv.weight": weights[f"{source}.attn.v_proj.weight"],
+            f"{target}.attention_obj.wo.weight": weights[f"{source}.attn.output_proj.weight"],
+            f"{target}.norm_obj_1.g": weights[f"{source}.ln1.weight"],
+            f"{target}.norm_obj_2.g": weights[f"{source}.ln2.weight"],
+            f"{target}.pwff_onj.w1.weight": weights[f"{source}.ffn.w1.weight"],
+            f"{target}.pwff_onj.w2.weight": weights[f"{source}.ffn.w2.weight"],
+            f"{target}.pwff_onj.w3.weight": weights[f"{source}.ffn.w3.weight"],
+        })
+    transformer_lm_obj.load_state_dict(state)
+
+    return transformer_lm_obj(in_indices)
 
 
 def run_rmsnorm(
