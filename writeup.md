@@ -37,3 +37,25 @@ Problem (tokenizer_experiments):
         Estimated total time (days): 27.813076025224586
         If we linearly estimate thus Esitmated time = Estimated_num_bytes / rate we obtain 667 hours
     d)Uint-16 occupies 2 bytes, while int32 ocuppy around 4 bytes and int64 occupies 8 bytes. Also Uint-16 can represent 2^16=65536 possible tokens while |V| of Tiny = 10k and OWT = 32k and both vocabluraries fit this range
+
+Problem (transformer_accounting):
+    a)  
+    Embedding - (vocab_size,    d_model) = 80_411_200
+    Transformer_block: num_layers*(d_model+4*d_model^2+d_model+3*d_ff*d_model) = 1_479_628_800
+    Norm - d_model = 1_600
+    Linear - vocab_size*d_model = 80_411_200
+    Sum = 1_640_452_800
+    1_640_452_800 *4 = 6_561_811_200 bytes (float32) -> 6.56 GB
+    b)
+    48*Multi_head_self_attention:
+      3*2*d_model*s_l*d_model = 15_728_640_000
+        2*d_k*s_l^2 = 3_355_443_200
+        2*s_l*s_l*d_v = 3_355_443_200
+        2*s_l*d_l^2 = 5_242_880_000
+        3*2*s_l*d_m*d_ff = 42_152_755_200
+    = 3_352_087_756_800 FLOPs
+    2*d_m*vocab_size*s_l = 164_682_137_600 FLOPs
+    =3_516_769_894_400 FLOPs = 3.52 TFLOPs
+    c) Transformer block more precisely PWFF
+    d)As model increases FF proportion increases and Lm head and other proportions decrease
+    e) 3.52->133.58 TFLOPs (38x), because attention score/value products grows ^2 with s_l while others linearly. The score/value  products raises from %9.16->61.73%, while SwiGLU falls 57%->24%, attention projections from 28%->12% and Lm head 4.7%->2%
