@@ -127,10 +127,10 @@ class RoPE(torch.nn.Module):
         self.register_buffer("cos",cos,persistent=False)
         self.register_buffer("sin",sin,persistent=False)
 
-    def forward(self, x: torch.Tensor,
-                token_positions: torch.Tensor
+    def forward(self, x: torch.Tensor, #(..., seq_len, d_k)
+                token_positions: torch.Tensor #(..., seq_len)
     )->torch.Tensor:
-        a = x[...,::2]; b = x[...,1::2]
+        a = x[...,::2]; b = x[...,1::2] #(..., seq_len, d_k//2)
         cos_pos = self.cos[token_positions]
         sin_pos = self.sin[token_positions]
         first = cos_pos*a - sin_pos*b
@@ -174,3 +174,62 @@ def scaled_dot_product_attention(
     O = einx.dot("... i [j], ... [j] d_v -> ... i d_v",A,V)
 
     return O
+
+class multihead_self_attention(torch.nn.Module):
+    def __init__(self, d_model : int,
+                 num_heads: int,
+                 theta: float | None = None,
+                 max_seq_len: int | None = None,
+                 device:torch.device | None = None,
+                 dtype:torch.dtype| None = None):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model//num_heads
+        self.d_v = self.d_k
+        self.device = device
+        self.dtype = dtype
+
+        self.wq = Linear(self.d_model,self.d_model,device=device,dtype=dtype)
+        self.wk = Linear(self.d_model,self.d_model,device=device,dtype=dtype)
+        self.wv = Linear(self.d_model,self.d_model,device=device,dtype=dtype)
+        self.wo = Linear(self.d_model,self.d_model,device=device,dtype=dtype)
+        self.rope_obj = None
+        if theta is not None and max_seq_len is not None:
+            self.rope_obj = RoPE(theta,self.d_k,max_seq_len,
+                                    device=device)
+
+    def split(self, m: torch.Tensor)->torch.Tensor:
+        m = einx.id("... (h d_k) -> ... h d_k",m, h=self.num_heads)
+        return einx.id("... s_l h d_k -> ... h s_l d_k",m)
+
+    def forward(self, x:torch.Tensor,
+                token_positions: torch.Tensor | None = None #(...,s_l)
+    )->torch.Tensor:
+        #x.shape =(batch_size ... seq_len d_model)
+        
+        #Q,K,V Ininitalization
+        Q = self.wq(x)
+        K = self.wk(x)
+        V = self.wv(x)
+        
+        #Split
+        Q = self.split(Q); K=self.split(K); V=self.split(V) #(... h s_l d_k | d_v)
+
+        #RoPE
+        if token_positions is not None and self.rope_obj is not None:
+            Q = self.rope_obj(Q,token_positions)
+            K = self.rope_obj(K,token_positions)
+
+        #Mask
+        seq_len = x.shape[-2]
+        mask = torch.ones(seq_len,seq_len,
+                    device=x.device,dtype = torch.bool)
+        mask = torch.tril(mask) # lower triangular
+        
+        #Scaled_dot_product_attention per head
+        H = scaled_dot_product_attention(Q,K,V,mask)
+
+        #Concat heads and @ W_O
+        H = einx.id("... h s_l d_k -> ... s_l (h d_k)",H)
+        return self.wo(H)

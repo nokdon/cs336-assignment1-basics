@@ -13,6 +13,7 @@ from cs336_basics.bpe import train_bpe
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.model import Linear, Embedding, RMSNorm, PWFF
 from cs336_basics.model import RoPE, softmax, scaled_dot_product_attention
+from cs336_basics.model import multihead_self_attention
 
 def run_linear(
     d_in: int,
@@ -151,7 +152,15 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multi_head_attention_obj = multihead_self_attention(
+        d_model,num_heads)
+    state = {"wq.weight": q_proj_weight,
+             "wk.weight": k_proj_weight,
+             "wv.weight": v_proj_weight,
+             "wo.weight": o_proj_weight}
+    multi_head_attention_obj.load_state_dict(state)
+
+    return multi_head_attention_obj(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -191,7 +200,15 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multi_head_attention_obj = multihead_self_attention(
+            d_model,num_heads,theta,max_seq_len)
+    state = {"wq.weight": q_proj_weight,
+                "wk.weight": k_proj_weight,
+                "wv.weight": v_proj_weight,
+                "wo.weight": o_proj_weight}
+    multi_head_attention_obj.load_state_dict(state)
+
+    return multi_head_attention_obj(in_features,token_positions)
 
 
 def run_rope(
