@@ -207,12 +207,12 @@ class multihead_self_attention(torch.nn.Module):
                 token_positions: torch.Tensor | None = None #(...,s_l)
     )->torch.Tensor:
         #x.shape =(batch_size ... seq_len d_model)
-        
+
         #Q,K,V Ininitalization
         Q = self.wq(x)
         K = self.wk(x)
         V = self.wv(x)
-        
+
         #Split
         Q = self.split(Q); K=self.split(K); V=self.split(V) #(... h s_l d_k | d_v)
 
@@ -226,10 +226,51 @@ class multihead_self_attention(torch.nn.Module):
         mask = torch.ones(seq_len,seq_len,
                     device=x.device,dtype = torch.bool)
         mask = torch.tril(mask) # lower triangular
-        
+
         #Scaled_dot_product_attention per head
         H = scaled_dot_product_attention(Q,K,V,mask)
 
         #Concat heads and @ W_O
         H = einx.id("... h s_l d_k -> ... s_l (h d_k)",H)
         return self.wo(H)
+
+class transformer_block(torch.nn.Module):
+    def __init__(self,
+                 d_model: int,
+                 num_heads: int,
+                 d_ff: int,
+                 theta: float,
+                 max_seq_len:int,
+                 device : torch.device | None = None,
+                 dtype : torch.dtype | None = None,
+                 eps: float = 1e-5
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_ff = d_ff
+        self.theta = theta
+        self.max_seq_len = max_seq_len
+        self.device = device
+        self.dtype = dtype
+        self.eps = eps
+
+        self.norm_obj_1 = RMSNorm(d_model,eps,device,dtype)
+        self.norm_obj_2 = RMSNorm(d_model,eps,device,dtype)
+        self.attention_obj = multihead_self_attention(d_model,num_heads,
+                            theta,max_seq_len,device,dtype)
+        self.pwff_onj = PWFF(d_model,d_ff,device,dtype)
+
+    def forward(self, x:torch.Tensor #(..., s_l, d)
+    )->torch.Tensor:
+
+        #subblock 1
+        x_normed = self.norm_obj_1(x)
+        token_positions = torch.arange(0,x.shape[-2],device=x.device)
+        r_one = self.attention_obj(x_normed,token_positions)
+        y_one = x + r_one
+
+        #subblock 2
+        y_one_normed = self.norm_obj_2(y_one)
+        r_two = self.pwff_onj(y_one_normed)
+        return y_one + r_two

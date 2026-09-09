@@ -13,7 +13,7 @@ from cs336_basics.bpe import train_bpe
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.model import Linear, Embedding, RMSNorm, PWFF
 from cs336_basics.model import RoPE, softmax, scaled_dot_product_attention
-from cs336_basics.model import multihead_self_attention
+from cs336_basics.model import multihead_self_attention, transformer_block
 
 def run_linear(
     d_in: int,
@@ -304,7 +304,22 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    transformer_block_obj = transformer_block(d_model,num_heads,d_ff,
+                            theta,max_seq_len)
+    state = {
+      "norm_obj_1.g":weights["ln1.weight"],
+      "norm_obj_2.g":weights["ln2.weight"],
+      "attention_obj.wq.weight":weights["attn.q_proj.weight"],
+      "attention_obj.wk.weight":weights["attn.k_proj.weight"],
+      "attention_obj.wv.weight":weights["attn.v_proj.weight"],
+      "attention_obj.wo.weight":weights["attn.output_proj.weight"],
+      "pwff_onj.w1.weight":weights["ffn.w1.weight"],
+      "pwff_onj.w2.weight":weights["ffn.w2.weight"],
+      "pwff_onj.w3.weight":weights["ffn.w3.weight"]
+  }
+
+    transformer_block_obj.load_state_dict(state)
+    return transformer_block_obj(in_features)
 
 
 def run_transformer_lm(
