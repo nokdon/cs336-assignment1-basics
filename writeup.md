@@ -78,3 +78,33 @@ Problem (learning_rate_tuning):
         7.442077094353306e+16
         2.389733822267654e+18
     1e1 converges but slower than 1e2 for 10 itteratins. 1e2 is just fine, faster than 1e2. 1e3 is too big -> diverges.
+
+Problem (adamw_accounting):
+    a) P (memory of params) = 6_561_811_200 bytes (float32) -> 6.56 GB from transformet_accounting
+    m,v = 2* P =  2 * 6.56 GB = 13.12 GB
+    gradients = P = 6,56 GB
+    List below = 16.4*B GB
+        2*RMSNorm = 2BSD
+        Q,K,V = 3BSD
+        S and A = 2BHS^2
+        O = BSD
+        r_one = BSD
+        SwiGLU = 4BSF+BSD
+        Final_Norm = BSD
+        LM_head = BSV
+        cross_entropy = BSV
+    Result: 26.25+16.4*B
+    b)B=3
+    c)Per element of parameter cost:
+        Weight decay: 2 FLOPs
+        m_upd: 3 FLOPs
+        v_upd : 4 FLOPs
+        moment_adj: 5 FLOP
+        Sum = 14
+    1_640_452_800 * 14 = 22_966_339_200 FLOPs
+    which is 22.97 GFLOPs
+    d) 495 teraFLOP
+        50% -> 247
+        400K steps and B = 1024 and cost for one batch forward+backward+step
+        = 3.516 TFLOP + 0.02296 TFLOP + 2*forward_cost =так = 10.57 TFLOP
+        -> 400_000*1024*10.57 / 247 * 3600 = 4869 HOURS!!!
