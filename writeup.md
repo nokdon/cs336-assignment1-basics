@@ -59,3 +59,22 @@ Problem (transformer_accounting):
     c) Transformer block more precisely PWFF
     d)As model increases FF proportion increases and Lm head and other proportions decrease
     e) 3.52->133.58 TFLOPs (38x), because attention score/value products grows ^2 with s_l while others linearly. The score/value  products raises from %9.16->61.73%, while SwiGLU falls 57%->24%, attention projections from 28%->12% and Lm head 4.7%->2%
+
+Problem (learning_rate_tuning):
+    1e1: 31.655099868774414
+        20.259265899658203
+        14.934264183044434
+        ...
+        4.883752822875977
+        4.254292011260986
+    1e2: 27.789491653442383
+        4.767922878265381
+        ...
+        2.142694145777215e-22
+        2.3807714834487026e-23
+    1e3: 25.782888412475586
+        9307.62109375
+        ...
+        7.442077094353306e+16
+        2.389733822267654e+18
+    1e1 converges but slower than 1e2 for 10 itteratins. 1e2 is just fine, faster than 1e2. 1e3 is too big -> diverges.
