@@ -3,6 +3,7 @@ from cs336_basics.model import softmax
 from collections.abc import Callable
 from typing import Optional
 import math
+from collections.abc import Iterable
 
 def cross_entropy(o: torch.Tensor, #(batch_size, seq_len, vocab_size)
                   targets: torch.Tensor
@@ -91,3 +92,25 @@ def learning_rate_schedule(t: int,
     elif t > T_c:
         lr = a_min
     return lr
+
+def gradient_clipping(params: Iterable[torch.nn.Parameter],
+                      M: float
+):
+    l = list(params)
+    sum = 0
+    for x in l:
+        if x.grad is None:
+            continue
+        sum += torch.sum(x.grad**2)
+    if type(sum) == int:
+        sum = torch.zeros_like(l[0])
+    grad_norm = torch.sqrt(sum)
+    if grad_norm <= M:
+        return
+    
+    for p in l:
+        if p.grad is None:
+            continue
+        
+        with torch.no_grad():
+            p.grad.mul_(M/(grad_norm+1e-6))
