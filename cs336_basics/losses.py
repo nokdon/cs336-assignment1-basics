@@ -5,6 +5,8 @@ from typing import Optional
 import math
 from collections.abc import Iterable
 import numpy as np
+import typing
+import os
 
 def cross_entropy(o: torch.Tensor, #(batch_size, seq_len, vocab_size)
                   targets: torch.Tensor
@@ -132,3 +134,24 @@ def data_loading(x: np.ndarray, #[int,...] IDs
     X = torch.as_tensor(x[X_pos],device=device_str)
     Y = torch.as_tensor(x[Y_pos],device=device_str)
     return X,Y
+
+def save_checkpoint(model:torch.nn.Module,
+                    optimizer: torch.optim.Optimizer,
+                    iteration: int,
+                    out: str | os.PathLike | typing.BinaryIO | typing.IO[bytes]
+):
+    checkpoint = {
+    "model": model.state_dict(),
+    "optimizer": optimizer.state_dict(),
+    "iteration": iteration,
+    }
+    torch.save(checkpoint,out)
+
+def load_checkpoint(src: str | os.PathLike | typing.BinaryIO | typing.IO[bytes],
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer
+)->int:
+    checkpoint = torch.load(src)
+    model.load_state_dict(checkpoint["model"])
+    optimizer.load_state_dict(checkpoint["optimizer"])
+    return checkpoint["iteration"]
