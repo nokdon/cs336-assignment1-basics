@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Optional
 import math
 from collections.abc import Iterable
+import numpy as np
 
 def cross_entropy(o: torch.Tensor, #(batch_size, seq_len, vocab_size)
                   targets: torch.Tensor
@@ -107,10 +108,27 @@ def gradient_clipping(params: Iterable[torch.nn.Parameter],
     grad_norm = torch.sqrt(sum)
     if grad_norm <= M:
         return
-    
+
     for p in l:
         if p.grad is None:
             continue
-        
+
         with torch.no_grad():
             p.grad.mul_(M/(grad_norm+1e-6))
+
+def data_loading(x: np.ndarray, #[int,...] IDs
+                 batch_size: int,
+                 context_length: int,
+                 device_str: str
+)->tuple[torch.Tensor,torch.Tensor]: #(batch_size, context_len)
+
+    ids = np.random.randint(0,len(x)-context_length,batch_size)
+    c = np.arange(context_length)
+
+    X_pos = ids[:,None] + c[None,:]
+    c += 1
+    Y_pos = ids[:,None] + c[None,:]
+
+    X = torch.as_tensor(x[X_pos],device=device_str)
+    Y = torch.as_tensor(x[Y_pos],device=device_str)
+    return X,Y
