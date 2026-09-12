@@ -131,8 +131,10 @@ def data_loading(x: np.ndarray, #[int,...] IDs
     c += 1
     Y_pos = ids[:,None] + c[None,:]
 
-    X = torch.as_tensor(x[X_pos],device=device_str)
-    Y = torch.as_tensor(x[Y_pos],device=device_str)
+    X = torch.as_tensor(x[X_pos],device=device_str,
+                        dtype=torch.long)
+    Y = torch.as_tensor(x[Y_pos],device=device_str,
+                        dtype=torch.long)
     return X,Y
 
 def save_checkpoint(model:torch.nn.Module,
