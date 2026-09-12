@@ -1,5 +1,6 @@
 import torch
 import einx
+from cs336_basics.tokenizer import Tokenizer
 
 class Linear(torch.nn.Module):
     def __init__(self,in_features: int,
@@ -305,7 +306,7 @@ class TransformerLM(torch.nn.Module):
         self.final_norm_obj = RMSNorm(d_model,eps,device,dtype)
         self.linear_obj = Linear(d_model,vocab_size,device,dtype)
 
-    def forward(self,x:torch.Tensor,
+    def forward(self,x:torch.Tensor, #(B S_L)
     )->torch.Tensor:
         #Input -> Token Embedding
         e = self.embedding_obj(x)
@@ -320,4 +321,54 @@ class TransformerLM(torch.nn.Module):
         #Norm -> linear
         logits = self.linear_obj(e_norm)
 
-        return logits
+        return logits #(B S_L V)
+
+def top_p(probabilities: torch.Tensor,
+          p:float
+)->torch.Tensor:
+    s_prob, indicies = torch.sort(probabilities,dim=-1,
+                                  descending=True)
+    cumsum = torch.cumsum(s_prob,dim=-1)
+    position = torch.searchsorted(cumsum,p).item()
+    selected = indicies[:position+1]
+    result = torch.zeros_like(s_prob)
+    sum = cumsum[position]
+    return result.scatter_(-1,selected,s_prob)/sum
+
+
+
+def decoding(prompt:str,
+             tokenizer_obj:Tokenizer,
+             model_obj: TransformerLM,
+             device: torch.device,
+             temperature: float,
+             p: float,
+             max_tokens: int):
+
+    assert temperature > 0
+    #get id of <|endoftext|>
+    special_token_b = "<|endoftext|>".encode("utf-8")
+    special_token_id = tokenizer_obj.bytes_to_id[special_token_b]
+
+    #Prompt_str -> IDs
+    ids = tokenizer_obj.encode(prompt)
+    start = len(ids)
+
+    #IDs -> logits
+    with torch.no_grad():
+        for _ in range(max_tokens):
+            if len(ids) > model_obj.context_length:
+                raise BufferError(f"len_ids {len(ids)}" \
+                                  "> context_length")
+            logits = model_obj(torch.as_tensor(ids,device=device,
+                                    dtype=torch.long).unsqueeze(0))
+            probab = softmax(logits/temperature,-1)
+            if p != 1:
+                upd_ptob = top_p(probab[0,-1,:],p)
+            else:
+                upd_ptob = probab[0,-1,:]
+            output = torch.multinomial(upd_ptob,1)
+            if output.item() == special_token_id:
+                break
+            ids.append(output.item())
+    return tokenizer_obj.decode(ids[start:])
