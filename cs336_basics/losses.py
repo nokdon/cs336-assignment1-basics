@@ -98,7 +98,7 @@ def learning_rate_schedule(t: int,
 
 def gradient_clipping(params: Iterable[torch.nn.Parameter],
                       M: float
-):
+)->torch.Tensor:
     l = list(params)
     sum = 0
     for x in l:
@@ -109,7 +109,7 @@ def gradient_clipping(params: Iterable[torch.nn.Parameter],
         sum = torch.zeros_like(l[0])
     grad_norm = torch.sqrt(sum)
     if grad_norm <= M:
-        return
+        return grad_norm
 
     for p in l:
         if p.grad is None:
@@ -117,6 +117,7 @@ def gradient_clipping(params: Iterable[torch.nn.Parameter],
 
         with torch.no_grad():
             p.grad.mul_(M/(grad_norm+1e-6))
+    return grad_norm
 
 def data_loading(x: np.ndarray, #[int,...] IDs
                  batch_size: int,
