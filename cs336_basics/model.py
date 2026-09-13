@@ -79,28 +79,39 @@ class PWFF(torch.nn.Module):
     def __init__(self,d_model:int,
                  d_ff:int,
                  device:torch.device | None = None,
-                 dtype:torch.dtype| None = None
+                 dtype:torch.dtype| None = None,
+                 ffn_type: str = "swiglu"
     ):
         super().__init__()
         self.d_model = d_model
         self.d_ff = d_ff
         self.device = device
         self.dtype = dtype
+        self.ffn_type = ffn_type
 
         self.w2 = Linear(d_ff,d_model,device,dtype)
         self.w1 = Linear(d_model,d_ff,device,dtype)
-        self.w3 = Linear(d_model,d_ff,device,dtype)
+        if self.ffn_type == "swiglu":
+            self.w3 = Linear(d_model,d_ff,device,dtype)
 
     def forward(self,x:torch.Tensor
     )->torch.Tensor:
-        assert x.shape[-1] == self.d_model
+        if self.ffn_type == "swiglu":
+            assert x.shape[-1] == self.d_model
 
-        first = self.w1.forward(x)
-        second = first*torch.sigmoid(first)
-        third = second * self.w3.forward(x)
-        forth = self.w2.forward(third)
+            first = self.w1.forward(x)
+            second = first*torch.sigmoid(first)
+            third = second * self.w3.forward(x)
+            forth = self.w2.forward(third)
 
-        return forth
+            return forth
+        
+        elif self.ffn_type == "silu":
+            first = self.w1(x)
+            second = first * torch.sigmoid(first)
+            third = self.w2(second)
+            return third
+
 
 class RoPE(torch.nn.Module):
     def __init__(self,
@@ -182,7 +193,8 @@ class multihead_self_attention(torch.nn.Module):
                  theta: float | None = None,
                  max_seq_len: int | None = None,
                  device:torch.device | None = None,
-                 dtype:torch.dtype| None = None):
+                 dtype:torch.dtype| None = None,
+                 no_pos_emb: bool = False):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -190,6 +202,7 @@ class multihead_self_attention(torch.nn.Module):
         self.d_v = self.d_k
         self.device = device
         self.dtype = dtype
+        self.no_pos_emb = no_pos_emb
 
         self.wq = Linear(self.d_model,self.d_model,device=device,dtype=dtype)
         self.wk = Linear(self.d_model,self.d_model,device=device,dtype=dtype)
@@ -217,10 +230,11 @@ class multihead_self_attention(torch.nn.Module):
         #Split
         Q = self.split(Q); K=self.split(K); V=self.split(V) #(... h s_l d_k | d_v)
 
-        #RoPE
-        if token_positions is not None and self.rope_obj is not None:
-            Q = self.rope_obj(Q,token_positions)
-            K = self.rope_obj(K,token_positions)
+        #RoPE or NoPE
+        if not self.no_pos_emb:
+            if token_positions is not None and self.rope_obj is not None:
+                Q = self.rope_obj(Q,token_positions)
+                K = self.rope_obj(K,token_positions)
 
         #Mask
         seq_len = x.shape[-2]
@@ -244,7 +258,11 @@ class transformer_block(torch.nn.Module):
                  max_seq_len:int,
                  device : torch.device | None = None,
                  dtype : torch.dtype | None = None,
-                 eps: float = 1e-5
+                 eps: float = 1e-5,
+                 no_norm: bool = False,
+                 no_pos_emb: bool = False,
+                 ffn_type: str = "swiglu",
+                 norm_position:str = "pre"
     ):
         super().__init__()
         self.d_model = d_model
@@ -255,26 +273,57 @@ class transformer_block(torch.nn.Module):
         self.device = device
         self.dtype = dtype
         self.eps = eps
+        self.no_norm = no_norm
+        self.no_pos_emb = no_pos_emb
+        self.ffn_type = ffn_type
+        self.norm_position = norm_position
 
         self.norm_obj_1 = RMSNorm(d_model,eps,device,dtype)
         self.norm_obj_2 = RMSNorm(d_model,eps,device,dtype)
         self.attention_obj = multihead_self_attention(d_model,num_heads,
-                            theta,max_seq_len,device,dtype)
-        self.pwff_onj = PWFF(d_model,d_ff,device,dtype)
+                            theta,max_seq_len,device,dtype,no_pos_emb)
+        self.pwff_onj = PWFF(d_model,d_ff,device,dtype,ffn_type)
 
     def forward(self, x:torch.Tensor #(..., s_l, d)
     )->torch.Tensor:
 
         #subblock 1
-        x_normed = self.norm_obj_1(x)
-        token_positions = torch.arange(0,x.shape[-2],device=x.device)
-        r_one = self.attention_obj(x_normed,token_positions)
-        y_one = x + r_one
+        if self.norm_position == "pre":
+            if self.no_norm:
+                x_normed = x
+            else:
+                x_normed = self.norm_obj_1(x)
+            token_positions = torch.arange(0,x.shape[-2],device=x.device)
+            r_one = self.attention_obj(x_normed,token_positions)
+            y_one = x + r_one
+        
 
-        #subblock 2
-        y_one_normed = self.norm_obj_2(y_one)
-        r_two = self.pwff_onj(y_one_normed)
-        return y_one + r_two
+            #subblock 2
+            if self.no_norm:
+                y_one_normed = y_one
+            else:
+                y_one_normed = self.norm_obj_2(y_one)
+            r_two = self.pwff_onj(y_one_normed)
+            return y_one + r_two
+        
+        elif self.norm_position == "post":
+
+            #subblock 1
+            token_positions = torch.arange(0,x.shape[-2],device=x.device)
+            r_one = self.attention_obj(x,token_positions)
+            y_one = x + r_one
+            if self.no_norm:
+                y_one_normed = y_one
+            else:
+                y_one_normed = self.norm_obj_1(y_one)
+
+            #subblock 2
+            r_two = self.pwff_onj(y_one_normed)
+            y_two = y_one_normed + r_two
+            if self.no_norm:
+                return y_two
+            else:
+                return self.norm_obj_2(y_two)
 
 class TransformerLM(torch.nn.Module):
     def __init__(self, vocab_size: int,
@@ -286,7 +335,11 @@ class TransformerLM(torch.nn.Module):
                  theta:float,
                  device: torch.device | None = None,
                  dtype: torch.dtype | None = None,
-                 eps: float = 1e-5):
+                 eps: float = 1e-5,
+                 no_norm: bool = False,
+                 no_pos_emb: bool = False,
+                 ffn_type: str = "swiglu",
+                 norm_position:str = "pre"):
         super().__init__()
         self.vocab_size = vocab_size
         self.context_length = context_length
@@ -298,10 +351,15 @@ class TransformerLM(torch.nn.Module):
         self.device = device
         self.dtype = dtype
         self.eps = eps
+        self.no_norm = no_norm
+        self.no_pos_emb = no_pos_emb
+        self.ffn_type = ffn_type
+        self.norm_position = norm_position
 
         self.embedding_obj = Embedding(vocab_size,d_model,device,dtype)
         s = [transformer_block(d_model,num_heads,d_ff,
-                                theta,context_length,device,dtype,eps) for _ in range(num_layers)]
+                                theta,context_length,device,dtype,eps,no_norm,
+                                no_pos_emb,ffn_type,norm_position) for _ in range(num_layers)]
         self.transformer_block_obj = torch.nn.ModuleList(s)
         self.final_norm_obj = RMSNorm(d_model,eps,device,dtype)
         self.linear_obj = Linear(d_model,vocab_size,device,dtype)
@@ -316,7 +374,10 @@ class TransformerLM(torch.nn.Module):
             e = block(e)
 
         #Transformer block -> Norm
-        e_norm = self.final_norm_obj(e)
+        if self.no_norm:
+            e_norm = e
+        else:
+            e_norm = self.final_norm_obj(e)
 
         #Norm -> linear
         logits = self.linear_obj(e_norm)

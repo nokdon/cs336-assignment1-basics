@@ -18,7 +18,7 @@ def main():
     vocab_size = 10_000
     context_length = 256
     d_model = 512
-    d_ff = 1344
+    d_ff = None #for "swiglu" d_ff = 8/3*d_m for "silu" d_ff = 4*d_m
     theta = 10_000
     num_layers = 4
     num_heads = 16
@@ -53,7 +53,10 @@ def main():
         type=str,
         default="artifacts/checkpoints/last.pt",
     )
-
+    parser.add_argument("--no_norm", action="store_true")
+    parser.add_argument("--no_pos_emb", action="store_true")
+    parser.add_argument("--ffn_type", type=str,default="swiglu")
+    parser.add_argument("--norm_position", type=str, default="pre")
 
     args = parser.parse_args()
 
@@ -68,6 +71,11 @@ def main():
     eval_batches = args.eval_batches
     lr = a_max
 
+    if args.ffn_type == "swiglu":
+        d_ff = 1344
+    elif args.ffn_type == "silu":
+        d_ff = 4 * d_model
+
     #Read Data -> X
     token_dtype = np.uint16
     train_data = np.memmap(args.train_path,
@@ -79,7 +87,9 @@ def main():
     #TransformerLM
     model_obj = TransformerLM(vocab_size,context_length,
                                 num_layers,d_model,num_heads,
-                                d_ff,theta,args.device)
+                                d_ff,theta,args.device,
+    no_norm=args.no_norm,no_pos_emb=args.no_pos_emb,ffn_type=args.ffn_type,
+    norm_position=args.norm_position)
 
     #Optmizer
     optimizer = AdamW(model_obj.parameters(),
@@ -160,5 +170,5 @@ def main():
                 f.flush()
     run.finish()
 
-if __name__ == "main":
+if __name__ == "__main__":
       main()
