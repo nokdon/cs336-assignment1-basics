@@ -26,7 +26,7 @@ betas = (0.9, 0.95)
 
 temperature = 0.8
 p = 0.9
-max_tokens = 64
+max_tokens = 256
 device = "cuda:0"
 
 #TransformerLM obj initialization
@@ -36,7 +36,8 @@ model_obj = TransformerLM(vocab_size,context_length,
                           device=device)
 
 #download weights from checkpoint
-state = torch.load("artifacts/checkpoints/last.pt")
+state = torch.load("vast-backup.AhwCTq/cs336-assignment1-basics-private/" \
+"artifacts/checkpoints/full_lr_1e-3_b32_40000.pt")
 #upload weight state
 model_obj.load_state_dict(state["model"])
 #switch to eval mode

@@ -108,3 +108,32 @@ Problem (adamw_accounting):
         400K steps and B = 1024 and cost for one batch forward+backward+step
         = 3.516 TFLOP + 0.02296 TFLOP + 2*forward_cost =так = 10.57 TFLOP
         -> 400_000*1024*10.57 / 247 * 3600 = 4869 HOURS!!!
+
+Problem (Generating):
+    uv run python cs336_basics/generate.py --prompt "Once upon a time"
+    , in a small town, there was a boy named Tim. Tim was a tough boy who liked to play with his toys. One day, Tim saw a big, shiny toy in the store. He wanted it very much.
+    Tim asked his mom, "Can I have the toy, please?" His mom said, "No, Tim. That toy is too much money." Tim was sad, but he still wanted the toy. So, when his mom was not looking, he took the toy and ran away.
+    Later, Tim saw a small girl with a toy. She looked sad too. Tim walked up to her and said, "That's my toy! I want it." The girl looked at Tim and said, "I'm sorry, but I lost it. I can't give it back."
+    Tim felt bad for the girl. He gave her the toy and said, "I'm sorry. I will give it back." The girl smiled and said, "Thank you, Tim." They became friends and played together with the toy. Tim learned that it's good to ask before taking something that does not belong to you.
+
+Problem (Batch_size):
+    I tested on 1,32,64,128. 1 has low GPU util, so tokens/s was much lower than for 32. 32 batch had around about 29 times the throughput of batch size 1. 64 slightly faster than 32 and 128 provided no no further improvement with respect to 64.
+Problem (removing RMSNorm):
+    I epxected much bigger difference. It was tested on 5000 steps 32 batch (1/8 of full trainaing token budget), lr=1e-3->1e-4. Final validation was arond 1.668 compared to 1.638 for the baseline. However, gradient norm spikes were much larger(expected), so similar final losses didn't mean equally stable training
+Problem Post-norm:
+    Same configuration as above. 1.674 val_result. Slightly worse than baseline(pre_norm). I did not observe major instability
+Problem NoPE:
+    Same configuration as above. val_loss 1.768. It was also worse for every checkpoint. Yes, thats worse than baseline, but i expected worse.
+Problem SiLU:
+    same .... val_loss 1.719. I used wider hidden layer for SiLU to approximately match the parameter count. SwiGLU performed better
+Lr: 2000 steps
+    run_5	hdiu7m2n	1e-3 → 1e-4	1.9067
+    run_6	6on4ns9t	3e-3 → 3e-4	2.0960
+    run_7	seq0laav	3e-3 → 1e-4	2.0586
+    run_8	pxt3qc78	1e-2 → 1e-4	2.6628
+    run_9	sp6kixyg	1e-2 → 1e-3	2.7256
+    run_10	eg9qyej8	1e-5 → 1e-6	4.3279
+    run_18	nq4vfkop	1e-1 → 1e-2	3.3625
+    Run 5 became my future beseline -> Lets take 3x of it -> I then kept the same peak learning rate and lowered the final learning rate. I felt like at the very end it is better to take smaller lr -> I think it is logically better to run run-9 before run-8 -> 1e-5->1e-6 small and 1e-1->1e-2 big, so results are not that good. Also the graph showed that they decay at the beggining MUCH slower than e-3 family, so I decided to stop
+    Final validation loss:
+    For the full run lr = 1e-3->1e-4 gave val_loss = 1.4035 on baseline configuration
