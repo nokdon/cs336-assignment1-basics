@@ -1,5 +1,15 @@
 # CS336 Spring 2025 Assignment 1: Basics
 
+## Training
+
+Training loss from my `run_11` run.
+
+![Training loss for run_11](docs/training/run-11/train-loss.png)
+
+[Download CSV](docs/training/run-11/train-loss.csv)
+
+---
+
 For a full description of the assignment, see the assignment handout at
 [cs336_assignment1_basics.pdf](./cs336_assignment1_basics.pdf)
 
