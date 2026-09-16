@@ -1,8 +1,8 @@
 # CS336 Spring 2025 Assignment 1: Basics
 
-## TinyStories — full training
+## TinyStories full training checkpoint
 
-![TinyStories — full training](docs/training/run-11/train-loss.png)
+![TinyStories full training checkpoint](docs/training/run-11/train-loss.png)
 
 [Download CSV](docs/training/run-11/train-loss.csv)
 
