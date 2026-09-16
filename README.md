@@ -1,10 +1,8 @@
 # CS336 Spring 2025 Assignment 1: Basics
 
-## Training
+## TinyStories — full training
 
-Training loss from my `run_11` run.
-
-![Training loss for run_11](docs/training/run-11/train-loss.png)
+![TinyStories — full training](docs/training/run-11/train-loss.png)
 
 [Download CSV](docs/training/run-11/train-loss.csv)
 
